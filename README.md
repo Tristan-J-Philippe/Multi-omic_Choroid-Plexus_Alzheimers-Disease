@@ -1,4 +1,4 @@
-# A-Multi-omic-Atlas-of-Human-Choroid-Plexus-in-Alzheimer-s-Disease
+# A Multi-omic Atlas of Human Choroid- Plexus in Alzheimer's Disease
 
 #Complete snRNA-seq (RNA), snATAC-seq (ATAC), and spatial transcriptomics (ST) analysis pipelines.<br />
 <br />
