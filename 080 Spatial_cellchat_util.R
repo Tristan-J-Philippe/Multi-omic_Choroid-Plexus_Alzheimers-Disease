@@ -1,6 +1,6 @@
 ###
 ### 080 Spatial_cellchat_util.R
-### These functions were written by Dr. Denis R Avey
+### These functions were written by Drs. Denis R Avey and Tristan J Philippe
 # Purpose: Compare CellChat-derived signaling across three niches.
 # Dependencies:
 library(CellChat)
@@ -1219,4 +1219,5 @@ plot_rel_pathways_pdf <- function(pathways, major, label_LR = FALSE, output_file
   gridExtra::grid.arrange(grobs = all_plots, ncol = 4)
   dev.off()
 }
+
 
