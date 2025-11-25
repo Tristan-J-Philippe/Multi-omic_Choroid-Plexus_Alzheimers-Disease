@@ -6,10 +6,11 @@ util.R suffix include required functions, RNA, ATAC, and ST suffixes indicate da
 010 Load_preprocess_util.R - Load, preprocess, and QC individual snRNA/ATAC-seq data samples (split by batch and lanes).<br />
 011 Load_preprocess_SN_RNA_ATAC.R<br />
 <br />
-020 Cell_type_annotation_util.R - Cell type annotation and cleaning of each dataset. ...(4 and 5) <br />
+020 Cell_type_annotation_util.R - Cell type annotation and cleaning of each dataset. <br />
 021 Cell_type_annotation_RNA.R<br />
 022 Cell_type_annotation_ATAC.R<br />
 023 Cell_type_annotation_ST.R<br />
+<br />
 030 limma_pattern_fgsea_util.R - limma-Voom analyses, fgsea GO term analyses, and pattern matching analyses.<br />
 031 Cell_type_proportion_RNA.R<br />
 032 Cell_type_annotation_differential_RNA.R<br />
