@@ -2597,3 +2597,70 @@ dev.off()
 pdf(paste(curr_dir, "/FGSEA/Bar_ChP_ADvNCI_Neg.pdf", sep = ""), width=3, height=nrow(mat)*.5)
 barplot(abs(mat$ADvNCI_ChP), col=col_fun(mat$ADvNCI_ChP), horiz=T, xlim=c(0,3), border=NA)
 dev.off()
+
+#Parenchyma modules
+###Load modules
+Ast <- read_csv(paste0(curr_dir, "/GSVA_modules/Ast.csv"))
+Ext <- read_csv(paste0(curr_dir, "/GSVA_modules/Ext.csv"))
+Inh <- read_csv(paste0(curr_dir, "/GSVA_modules/Inh.csv"))
+Mic <- read_csv(paste0(curr_dir, "/GSVA_modules/Mic.csv"))
+Oli <- read_csv(paste0(curr_dir, "/GSVA_modules/Oli.csv"))
+ST_mods <- read_csv(paste0(curr_dir, "/GSVA_modules/ST modules.csv"))
+
+Paren_mods <- list("ast_m19"=c(Ast[Ast$module_assignment=="ast_m19",]$gene_name),
+                   "ext_m3"=c(Ext[Ext$module_assignment=="ext_m3",]$gene_name),
+                   "ext_m23"=c(Ext[Ext$module_assignment=="ext_m23",]$gene_name),
+                   "ext_m8"=c(Ext[Ext$module_assignment=="ext_m8",]$gene_name),
+                   "ext_m29"=c(Ext[Ext$module_assignment=="ext_m29",]$gene_name),
+                   "ext_m28"=c(Ext[Ext$module_assignment=="ext_m28",]$gene_name),
+                   "inh_m28"=c(Inh[Inh$module_assignment=="inh_m28",]$gene_name),
+                   "inh_m31"=c(Inh[Inh$module_assignment=="inh_m31",]$gene_name),
+                   "mic_m46"=c(Mic[Mic$module_assignment=="mic_m46",]$gene_name),
+                   "oli_m26"=c(Oli[Oli$module_assignment=="oli_m26",]$gene_name),
+                   "oli_m14"=c(Oli[Oli$module_assignment=="oli_m14",]$gene_name),
+                   "DAM"=c(ST_mods[ST_mods$module=="DAM",]$symbol))
+
+GSVA_fun(limma_cogdx_ADvNCI_Epithelial, pathways=c(Epi_modules, Paren_mods))
+GSVA_fun(limma_cogdx_ADvNCI_Immune, pathways=c(Imm_modules, Paren_mods))
+
+###Factors set up
+mdat <- read_csv(paste0(curr_dir, "/metadata/ex vivo ChP metadata (analytical).csv"))
+mdat <- column_to_rownames(mdat, "projid")
+msex = factor(paste(mdat$msex))
+X10X_batch = factor(paste(mdat$X10X_batch))
+library_batch = factor(paste(mdat$library_batch))
+apoe = factor(paste(mdat$apoe_genotype))
+apoe_sex = factor(paste(mdat$apoe_genotype, mdat$msex, sep="."))
+cogdx = factor(paste(mdat$cogdx))
+cogdx_sex = factor(paste(mdat$cogdx, mdat$msex, sep="."))
+apoe_adnc <- factor(paste(mdat$apoe_genotype, mdat$ad_adnc, sep="."))
+ad_adnc <- factor(paste(mdat$ad_adnc))
+
+cogdx_c = as.numeric(mdat$cogdx)
+projid = as.numeric(mdat$projid)
+age = as.numeric(mdat$age_death)
+pmi = as.numeric(mdat$pmi)
+educ = as.numeric(mdat$educ)
+gpath = as.numeric(mdat$gpath)
+Braaksc = as.numeric(mdat$braaksc)
+tdp = as.numeric(mdat$tdp_st4)
+tangles = as.numeric(mdat$tangsqrt_est_8reg)
+amyl = as.numeric(mdat$amylsqrt_est_8reg)
+
+arteriol = as.numeric(mdat$arteriol_scler)
+caa = as.numeric(mdat$caa_4gp)
+cvda = as.numeric(mdat$cvda_4gp2)
+cogn_global = as.numeric(mdat$cogn_global_last)
+
+
+####AD cogdx
+options(na.action='na.pass')
+Maindm <- model.matrix(~0 + cogdx + msex + age + pmi + X10X_batch)
+
+rownames(Maindm) <- rownames(mdat)
+colnames(Maindm)
+Maindm <- Maindm[complete.cases(Maindm),]
+Maincm <- makeContrasts(levels=Maindm, cogdx_MCIvNCI=(cogdx2+cogdx3)/2-cogdx1, cogdx_ADvNCI=(cogdx4+cogdx5)/2-cogdx1, cogdx_ADvMCI=(cogdx4+cogdx5)/2-(cogdx2+cogdx3)/2)
+
+GSVA_limmafun_lane(GSVA_Epithelial)
+GSVA_limmafun_lane(GSVA_Immune)

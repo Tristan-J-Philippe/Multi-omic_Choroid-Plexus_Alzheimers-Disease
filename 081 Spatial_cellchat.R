@@ -812,3 +812,618 @@ plot_rel_pathways_pdf(
 )
 
 
+
+
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(ggnewscale)
+
+file <- "~/data_csv/Supplemental_Table_ST_CellChat_net_revised.xlsx"
+
+df_full   <- read_excel(file, sheet = "Full_Interaction_Data")
+df_n1     <- read_excel(file, sheet = "Niche1_Interaction_Data")
+df_n2     <- read_excel(file, sheet = "Niche2_Interaction_Data")
+df_n3     <- read_excel(file, sheet = "Niche3_Interaction_Data")
+
+# define interaction id
+df_full <- df_full %>%
+  mutate(interaction_id = paste(source, target, ligand, receptor, sep = "|"))
+
+df_n1 <- df_n1 %>%
+  mutate(interaction_id = paste(source, target, ligand, receptor, sep = "|"))
+
+df_n2 <- df_n2 %>%
+  mutate(interaction_id = paste(source, target, ligand, receptor, sep = "|"))
+
+df_n3 <- df_n3 %>%
+  mutate(interaction_id = paste(source, target, ligand, receptor, sep = "|"))
+
+# re-format data and re-calculate delta prob (noticed some duplicate rows with values for ONLY prob.AD or prob.NCI)
+df_full_clean <- df_full %>%
+  group_by(interaction_id) %>%
+  summarise(
+    across(everything(), ~ {
+      vals <- unique(na.omit(.))
+      if (length(vals) == 0) NA
+      else vals[1]
+    }),
+    .groups = "drop"
+  )
+
+# re-compute delta_prob
+df_full_clean <- df_full_clean %>%
+  mutate(
+    delta_prob = prob.AD - prob.NCI,
+    combined_logFC = as.numeric(combined_logFC)  # just in case
+  )
+
+# repeat for n1-3
+df_n1_clean <- df_n1 %>%
+  group_by(interaction_id) %>%
+  summarise(
+    across(everything(), ~ {
+      vals <- unique(na.omit(.))
+      if (length(vals) == 0) NA
+      else vals[1]
+    }),
+    .groups = "drop"
+  )
+
+# re-compute delta_prob
+df_n1_clean <- df_n1_clean %>%
+  mutate(
+    delta_prob = prob.AD_n1 - prob.NCI_n1,
+    combined_logFC = as.numeric(combined_logFC)  # just in case
+  )
+
+df_n2_clean <- df_n2 %>%
+  group_by(interaction_id) %>%
+  summarise(
+    across(everything(), ~ {
+      vals <- unique(na.omit(.))
+      if (length(vals) == 0) NA
+      else vals[1]
+    }),
+    .groups = "drop"
+  )
+
+# re-compute delta_prob
+df_n2_clean <- df_n2_clean %>%
+  mutate(
+    delta_prob = prob.AD_n2 - prob.NCI_n2,
+    combined_logFC = as.numeric(combined_logFC)  # just in case
+  )
+
+df_n3_clean <- df_n3 %>%
+  group_by(interaction_id) %>%
+  summarise(
+    across(everything(), ~ {
+      vals <- unique(na.omit(.))
+      if (length(vals) == 0) NA
+      else vals[1]
+    }),
+    .groups = "drop"
+  )
+
+# re-compute delta_prob
+df_n3_clean <- df_n3_clean %>%
+  mutate(
+    delta_prob = prob.AD_n3 - prob.NCI_n3,
+    combined_logFC = as.numeric(combined_logFC)  # just in case
+  )
+
+# save cleaned up sheets
+write.csv(df_full_clean, file="~/data_csv/CellChat_ChP_ST_df_full_clean.csv")
+write.csv(df_n1_clean, file="~/data_csv/CellChat_ChP_ST_df_n1_clean.csv")
+write.csv(df_n2_clean, file="~/data_csv/CellChat_ChP_ST_df_n2_clean.csv")
+write.csv(df_n3_clean, file="~/data_csv/CellChat_ChP_ST_df_n3_clean.csv")
+
+# filter for specific pathway
+pathway_use <- "LAMININ"   # or "LAMININ", "FGF", "TGFb", etc.
+pathway_use <- "COLLAGEN"
+pathway_use <- "APP"
+pathway_use <- "FN1"
+pathway_use <- "SPP1"
+pathway_use <- "CD99"
+pathway_use <- "FGF"
+pathway_use <- "TNF"
+pathway_use <- "MIF"
+
+# filter by cellchat p-value, AD-differential p-value and/or logFC
+df_plot_full <- df_full_clean %>%
+  filter(grepl(pathway_use, pathway_name, ignore.case = TRUE)) %>%
+  filter(
+    combined_adjP < 0.05,
+    pval < 0.05,
+    abs(combined_logFC) > 0.25,
+    prob.AD > 0 | prob.NCI > 0
+  ) %>%
+  arrange(desc(abs(combined_logFC))) %>%
+  slice_head(n = 50) # optionally filter top N (e.g. 50) per pathway
+
+# extract ids
+top_ids <- df_plot_full$interaction_id
+
+# repeat for other niches (same interactions)
+df_plot_n1 <- df_n1_clean %>%
+  filter(interaction_id %in% top_ids)
+
+df_plot_n2 <- df_n2_clean %>%
+  filter(interaction_id %in% top_ids)
+
+df_plot_n3 <- df_n3_clean %>%
+  filter(interaction_id %in% top_ids)
+
+# ensure consistent ordering 
+df_plot_full <- df_plot_full %>%
+  mutate(
+    interaction_label = paste(source, "→", target, "|", interaction_name_2)
+  )
+
+df_plot_n1 <- df_plot_n1 %>%
+  mutate(interaction_label = paste(source, "→", target, "|", interaction_name_2))
+
+df_plot_n2 <- df_plot_n2 %>%
+  mutate(interaction_label = paste(source, "→", target, "|", interaction_name_2))
+
+df_plot_n3 <- df_plot_n3 %>%
+  mutate(interaction_label = paste(source, "→", target, "|", interaction_name_2))
+
+# factorize
+interaction_order <- df_plot_full %>%
+  arrange(desc(abs(combined_logFC))) %>%
+  pull(interaction_id)
+
+df_plot_full$interaction_id <- factor(
+  df_plot_full$interaction_id,
+  levels = interaction_order
+)
+
+# add missing rows to niche dfs
+prep_niche <- function(df_niche, df_plot_full, top_ids) {
+  
+  # template = FULL structure (this is the key fix)
+  template <- df_plot_full %>%
+    select(interaction_id, source, target, interaction_name_2) %>%
+    distinct()
+  
+  # join niche data onto full template
+  df_out <- template %>%
+    left_join(
+      df_niche %>%
+        filter(interaction_id %in% top_ids) %>%
+        select(interaction_id, combined_logFC, delta_prob),
+      by = "interaction_id"
+    ) %>%
+    mutate(
+      combined_logFC = ifelse(is.na(combined_logFC), NA, combined_logFC),
+      delta_prob     = ifelse(is.na(delta_prob), NA, delta_prob)
+    )
+  
+  return(df_out)
+}
+
+df_plot_n1 <- prep_niche(df_n1_clean, df_plot_full, top_ids)
+df_plot_n2 <- prep_niche(df_n2_clean, df_plot_full, top_ids)
+df_plot_n3 <- prep_niche(df_n3_clean, df_plot_full, top_ids)
+
+# ensure consistent ordering
+df_plot_n1$interaction_id <- factor(
+  df_plot_n1$interaction_id,
+  levels = interaction_order
+)
+
+df_plot_n2$interaction_id <- factor(
+  df_plot_n2$interaction_id,
+  levels = interaction_order
+)
+
+df_plot_n3$interaction_id <- factor(
+  df_plot_n3$interaction_id,
+  levels = interaction_order
+)
+
+# standardize x label
+df_plot_full <- df_plot_full %>%
+  mutate(
+    x_label = paste(source, "→", target),
+    type = "data"
+  )
+
+df_plot_n1 <- df_plot_n1 %>%
+  mutate(
+    x_label = paste(source, "→", target),
+    type = "data"
+  )
+
+df_plot_n2 <- df_plot_n2 %>%
+  mutate(
+    x_label = paste(source, "→", target),
+    type = "data"
+  )
+
+df_plot_n3 <- df_plot_n3 %>%
+  mutate(
+    x_label = paste(source, "→", target),
+    type = "data"
+  )
+
+# define max values for combined_logFC and delta_prob
+df_all <- bind_rows(
+  df_plot_full,
+  df_plot_n1,
+  df_plot_n2,
+  df_plot_n3
+)
+
+# color scale (symmetric around 0)
+max_abs_logFC <- max(abs(df_all$combined_logFC), na.rm = TRUE)
+
+# size scale (use absolute or raw depending on your intent)
+max_delta <- max(abs(df_all$delta_prob), na.rm = TRUE)
+
+# color palette for major cell types
+major <- c("Epithelial"="#C48F45", "Fibroblast"="#3249A6", "Endothelial"="#926392", "Mural"="#261132", "Immune"="#26532B")
+
+
+# revised plots with colored squares for sender/receiver
+
+# -------------------------------
+# CREATE ANNOTATION ROWS
+# -------------------------------
+annot_df <- df_plot_full %>%
+  distinct(x_label, source, target) %>%
+  pivot_longer(
+    cols = c(source, target),
+    names_to = "type",
+    values_to = "major_class"
+  ) %>%
+  mutate(
+    interaction_name_2 = ifelse(type == "source", "Source", "Target"),
+    fill_col = major[major_class],
+    combined_logFC = NA,
+    delta_prob = NA,
+    type = "annot"
+  )
+
+# -------------------------------
+# COMBINE
+# -------------------------------
+df_combined <- bind_rows(df_plot_full, annot_df)
+
+# Ensure annotation rows are at bottom
+df_combined$interaction_name_2 <- factor(
+  df_combined$interaction_name_2,
+  levels = c(
+    unique(df_plot_full$interaction_name_2),
+    "Source",
+    "Target"
+  )
+)
+
+# -------------------------------
+# PLOT
+# -------------------------------
+pdf(file=file.path("~/figures", paste0(pathway_use,"_top50_bubble_full.pdf")))
+ggplot(df_combined, aes(
+  x = x_label,
+  y = interaction_name_2
+)) +
+  
+  # --- main bubbles ---
+  geom_point(
+    data = subset(df_combined, type == "data"),
+    aes(
+      fill = combined_logFC,
+      size = abs(delta_prob)
+    ),
+    shape = 21,
+    color = "black"
+  ) +
+  
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-max_abs_logFC, max_abs_logFC)
+  ) +
+  
+  scale_size(
+    limits = c(0, max_delta),
+    range = c(1, 7)
+  ) +
+  
+  # --- NEW FILL SCALE for annotation ---
+  new_scale_fill() +
+  
+  # --- annotation tiles ---
+  geom_tile(
+    data = subset(df_combined, type == "annot"),
+    aes(fill = fill_col),
+    height = 0.8
+  ) +
+  
+  scale_fill_identity() +
+  
+  theme_minimal() +
+  theme(
+    aspect.ratio = 1.3,
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+dev.off()
+
+# repeat for niches 1-3
+# -------------------------
+# CREATE ANNOTATION ROWS
+# -------------------------------
+annot_df <- df_plot_n1 %>%
+  distinct(x_label, source, target) %>%
+  mutate(
+    source = as.character(source),
+    target = as.character(target)
+  ) %>%
+  pivot_longer(
+    cols = c(source, target),
+    names_to = "type",
+    values_to = "major_class"
+  ) %>%
+  mutate(
+    major_class = as.character(major_class),   # <-- critical
+    interaction_name_2 = ifelse(type == "source", "Source", "Target"),
+    fill_col = major[match(major_class, names(major))],  # <-- safer than indexing
+    combined_logFC = NA,
+    delta_prob = NA,
+    type = "annot"
+  )
+
+# -------------------------------
+# COMBINE, REMOVE NAs
+# -------------------------------
+df_combined_n1 <- bind_rows(df_plot_n1, annot_df)
+
+# Ensure annotation rows are at bottom
+df_combined_n1$interaction_name_2 <- factor(
+  df_combined_n1$interaction_name_2,
+  levels = c(
+    unique(df_plot_n1$interaction_name_2),
+    "Source",
+    "Target"
+  )
+)
+
+# -------------------------------
+# PLOT
+# -------------------------------
+pdf(file=file.path("~/figures", paste0(pathway_use,"_top50_bubble_n1.pdf")))
+ggplot(df_combined_n1, aes(
+  x = x_label,
+  y = interaction_name_2
+)) +
+  
+  # --- main bubbles ---
+  geom_point(
+    data = subset(df_combined_n1, type == "data"),
+    aes(
+      fill = combined_logFC,
+      size = abs(delta_prob)
+    ),
+    shape = 21,
+    color = "black"
+  ) +
+  
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-max_abs_logFC, max_abs_logFC)
+  ) +
+  
+  scale_size(
+    limits = c(0, max_delta),
+    range = c(1, 7)
+  ) +
+  
+  # --- NEW FILL SCALE for annotation ---
+  new_scale_fill() +
+  
+  # --- annotation tiles ---
+  geom_tile(
+    data = subset(df_combined_n1, type == "annot"),
+    aes(fill = fill_col),
+    height = 0.8
+  ) +
+  
+  scale_fill_identity() +
+  
+  theme_minimal() +
+  theme(
+    aspect.ratio = 1.3,
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+dev.off()
+
+# niche 2
+# -------------------------------
+# CREATE ANNOTATION ROWS
+# -------------------------------
+annot_df <- df_plot_n2 %>%
+  distinct(x_label, source, target) %>%
+  mutate(
+    source = as.character(source),
+    target = as.character(target)
+  ) %>%
+  pivot_longer(
+    cols = c(source, target),
+    names_to = "type",
+    values_to = "major_class"
+  ) %>%
+  mutate(
+    major_class = as.character(major_class),   # <-- critical
+    interaction_name_2 = ifelse(type == "source", "Source", "Target"),
+    fill_col = major[match(major_class, names(major))],  # <-- safer than indexing
+    combined_logFC = NA,
+    delta_prob = NA,
+    type = "annot"
+  )
+
+# -------------------------------
+# COMBINE, REMOVE NAs
+# -------------------------------
+df_combined_n2 <- bind_rows(df_plot_n2, annot_df)
+
+# Ensure annotation rows are at bottom
+df_combined_n2$interaction_name_2 <- factor(
+  df_combined_n2$interaction_name_2,
+  levels = c(
+    unique(df_plot_n2$interaction_name_2),
+    "Source",
+    "Target"
+  )
+)
+
+# -------------------------------
+# PLOT
+# -------------------------------
+pdf(file=file.path("~/figures", paste0(pathway_use,"_top50_bubble_n2.pdf")))
+ggplot(df_combined_n2, aes(
+  x = x_label,
+  y = interaction_name_2
+)) +
+  
+  # --- main bubbles ---
+  geom_point(
+    data = subset(df_combined_n2, type == "data"),
+    aes(
+      fill = combined_logFC,
+      size = abs(delta_prob)
+    ),
+    shape = 21,
+    color = "black"
+  ) +
+  
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-max_abs_logFC, max_abs_logFC)
+  ) +
+  
+  scale_size(
+    limits = c(0, max_delta),
+    range = c(1, 7)
+  ) +
+  
+  # --- NEW FILL SCALE for annotation ---
+  new_scale_fill() +
+  
+  # --- annotation tiles ---
+  geom_tile(
+    data = subset(df_combined_n2, type == "annot"),
+    aes(fill = fill_col),
+    height = 0.8
+  ) +
+  
+  scale_fill_identity() +
+  
+  theme_minimal() +
+  theme(
+    aspect.ratio = 1.3,
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+dev.off()
+
+# niche 3
+# -------------------------------
+# CREATE ANNOTATION ROWS
+# -------------------------------
+annot_df <- df_plot_n3 %>%
+  distinct(x_label, source, target) %>%
+  mutate(
+    source = as.character(source),
+    target = as.character(target)
+  ) %>%
+  pivot_longer(
+    cols = c(source, target),
+    names_to = "type",
+    values_to = "major_class"
+  ) %>%
+  mutate(
+    major_class = as.character(major_class),   # <-- critical
+    interaction_name_2 = ifelse(type == "source", "Source", "Target"),
+    fill_col = major[match(major_class, names(major))],  # <-- safer than indexing
+    combined_logFC = NA,
+    delta_prob = NA,
+    type = "annot"
+  )
+
+# -------------------------------
+# COMBINE, REMOVE NAs
+# -------------------------------
+df_combined_n3 <- bind_rows(df_plot_n3, annot_df)
+
+# Ensure annotation rows are at bottom
+df_combined_n3$interaction_name_2 <- factor(
+  df_combined_n3$interaction_name_2,
+  levels = c(
+    unique(df_plot_n3$interaction_name_2),
+    "Source",
+    "Target"
+  )
+)
+
+# -------------------------------
+# PLOT
+# -------------------------------
+pdf(file=file.path("~/figures", paste0(pathway_use,"_top50_bubble_n3.pdf")))
+ggplot(df_combined_n3, aes(
+  x = x_label,
+  y = interaction_name_2
+)) +
+  
+  # --- main bubbles ---
+  geom_point(
+    data = subset(df_combined_n3, type == "data"),
+    aes(
+      fill = combined_logFC,
+      size = abs(delta_prob)
+    ),
+    shape = 21,
+    color = "black"
+  ) +
+  
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limits = c(-max_abs_logFC, max_abs_logFC)
+  ) +
+  
+  scale_size(
+    limits = c(0, max_delta),
+    range = c(1, 7)
+  ) +
+  
+  # --- NEW FILL SCALE for annotation ---
+  new_scale_fill() +
+  
+  # --- annotation tiles ---
+  geom_tile(
+    data = subset(df_combined_n3, type == "annot"),
+    aes(fill = fill_col),
+    height = 0.8
+  ) +
+  
+  scale_fill_identity() +
+  
+  theme_minimal() +
+  theme(
+    aspect.ratio = 1.3,
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+dev.off()

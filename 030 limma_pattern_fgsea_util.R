@@ -835,4 +835,135 @@ selectPath_fun <- function(TT_res, selection){
   remove(plts)
 }
 
+library(purrr)
+library(GSVA)
+library(msigdbr)
+library(stringr)
+db_KG <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:KEGG")
+db_BP <- msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:BP")
+db_CC <- msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:CC")
+db_MC <- msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:MF")
+db_list <- rbind(db_BP, db_CC, db_MC, db_KG)
+pathway <- split(x = db_list$gene_symbol, f = db_list$gs_name)
 
+FDRcutoff <- 0.01
+LFcutoff <- 0.25
+
+GSVA_Scenic_fun <- function(limma_res, pathways){
+  #any limma result will do, you want a normalized expression matrix
+  name <- deparse(substitute(limma_res))
+  name <- paste(tail(str_split(name, "_")[[1]], 2), collapse="_")
+  
+  limma_res <- limma_res[!duplicated(limma_res$gene),]
+  rownames(limma_res) <- limma_res$gene
+  rownames(limma_res) <- gsub("\\(\\+\\)", "", rownames(limma_res))
+  exp_matrix <- limma_res[8:length(limma_res)]
+  pathway_scores <- GSVA::gsva(expr = as.matrix(exp_matrix), gset.idx.list = pathways, method = "gsva", kcdf = "Gaussian", parallel.sz = 32)
+  colnames(pathway_scores) <- sub("^X", "", colnames(pathway_scores))
+  colnames(pathway_scores) <- sub("\\.", "-", colnames(pathway_scores))
+  assign(paste("GSVA_Scenic", name, sep="_"), pathway_scores, envir = .GlobalEnv)
+}
+
+GSVA_fun <- function(limma_res, pathways){
+  #any limma result will do, you want a normalized expression matrix
+  name <- deparse(substitute(limma_res))
+  name <- gsub("limma_cogdx_ADvNCI_", "", name)
+  
+  limma_res <- limma_res[!duplicated(limma_res$gene),]
+  rownames(limma_res) <- limma_res$gene
+  exp_matrix <- limma_res[11:length(limma_res)-2]
+  pathway_scores <- GSVA::gsva(expr = as.matrix(exp_matrix), gset.idx.list = pathways, method = "gsva", kcdf = "Gaussian", parallel.sz = 32, min.sz=1)
+  colnames(pathway_scores) <- sub("^X", "", colnames(pathway_scores))
+  colnames(pathway_scores) <- sub("\\.", "-", colnames(pathway_scores))
+  write.csv(pathway_scores, file = paste(curr_dir, "/GSVA_modules/GSVA_snRNA_", name, ".csv", sep = ""))
+  assign(paste("GSVA", name, sep="_"), pathway_scores, envir = .GlobalEnv)
+}
+
+
+GSVA_limmafun_lane <- function(cts){
+  #cts is a GSVA_matrix
+  celltype <- deparse(substitute(cts))
+  
+  #Select relevant rows from Design Matrix  
+  dm <- matrix(ncol=ncol(Maindm))
+  dm <- dm[-1,]
+  colnames(dm) <- colnames(Maindm)
+  
+  for(i in colnames(cts)){
+    base_name <- sapply(str_split(i,"_",),'[',1) #get projid names
+    if(base_name %in% rownames(Maindm)){
+      name_rows <- rownames(dm)
+      row_add <- Maindm[base_name,]
+      dm <- rbind(dm, row_add)
+      rownames(dm) <- c(name_rows, paste(i))
+    }else{print(paste("Warning colname of data:", i, "not in rowname of Design Matrix"))}
+  }
+  
+  #Enforce Maindm and cts name match
+  if(all(rownames(dm)==colnames(cts))==FALSE){
+    dm <- dm[rownames(dm) %in% colnames(cts),]      
+    cts <- cts[,colnames(cts) %in% rownames(dm)]
+  }
+  
+  #order dm and cts based on first variable of interest
+  dm <- dm[order(dm[,1]),]
+  cts <- cts[,order(match(colnames(cts), rownames(dm)))]
+  
+  Lane <- factor(paste(sapply(str_split(colnames(cts),"_",),'[', 2), sapply(str_split(colnames(cts),"_",),'[', 3), sep="_")) #get Lane names
+  corfit <- duplicateCorrelation(cts, block=Lane)
+  
+  #limma
+  Mainf <- lmFit(cts, dm, block=Lane, correlation=corfit$consensus.correlation)
+  Mainf <- contrasts.fit(Mainf, Maincm)
+  Mainf <- eBayes(Mainf, trend = TRUE) #not Homoskedastic among others
+  
+  assign("vdata", data.frame(cts), envir = .GlobalEnv)
+  assign("Mainf",  Mainf, envir = .GlobalEnv)
+  
+  for(i in colnames(Mainf$coefficients)){
+    limma_resfun(coef=i, celltype=celltype)
+  }
+}
+
+
+GSVA_limmafun <- function(cts){
+  #cts is a GSVA_matrix
+  celltype <- deparse(substitute(cts))
+  
+  #Select relevant rows from Design Matrix  
+  dm <- matrix(ncol=ncol(Maindm))
+  dm <- dm[-1,]
+  colnames(dm) <- colnames(Maindm)
+  
+  for(i in colnames(cts)){
+    base_name <- sapply(str_split(i,"_",),'[',1) #get projid names
+    if(base_name %in% rownames(Maindm)){
+      name_rows <- rownames(dm)
+      row_add <- Maindm[base_name,]
+      dm <- rbind(dm, row_add)
+      rownames(dm) <- c(name_rows, paste(i))
+    }else{print(paste("Warning colname of data:", i, "not in rowname of Design Matrix"))}
+  }
+  
+  #Enforce Maindm and cts name match
+  if(all(rownames(dm)==colnames(cts))==FALSE){
+    dm <- dm[rownames(dm) %in% colnames(cts),]      
+    cts <- cts[,colnames(cts) %in% rownames(dm)]
+  }
+  
+  #order dm and cts based on first variable of interest
+  dm <- dm[order(dm[,1]),]
+  cts <- cts[,order(match(colnames(cts), rownames(dm)))]
+  
+  #limma
+  Mainf <- lmFit(cts, dm)
+  Mainf <- contrasts.fit(Mainf, Maincm)
+  Mainf <- eBayes(Mainf, trend = TRUE) #not Homoskedastic among others
+  
+  assign("vdata", data.frame(cts), envir = .GlobalEnv)
+  assign("Mainf",  Mainf, envir = .GlobalEnv)
+  
+  for(i in colnames(Mainf$coefficients)){
+    limma_resfun(coef=i, celltype=celltype)
+  }
+}

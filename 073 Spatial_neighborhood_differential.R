@@ -174,3 +174,4 @@ tukey_df <- as.data.frame(tukey_results$cluster) %>%
   arrange(p.adj)
 
 print(tukey_df)
+
